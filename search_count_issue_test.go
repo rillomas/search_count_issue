@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func TestAddRoom(t *testing.T) {
+func TestSearchRoom(t *testing.T) {
 	ins, err := aetest.NewInstance(nil)
 	if err != nil {
 		t.Fatalf("Failed to create instance: %v", err)

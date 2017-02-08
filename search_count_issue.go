@@ -2,6 +2,7 @@ package sample
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"time"
@@ -23,8 +24,14 @@ type SearchRoom struct {
 	CreateTime time.Time
 }
 
-// StoreRoom is a room that is stored in a datastore
+// StoreRoom is information of a room that is stored in the datastore
 type StoreRoom struct {
+	Name       string
+	CreateTime time.Time
+}
+
+// RoomInfo is information of a room that is returned to the client
+type RoomInfo struct {
 	Name       string
 	CreateTime time.Time
 }
@@ -37,9 +44,17 @@ type AddRoomResponse struct {
 	RoomID string // ID of a room
 }
 
+type SearchRoomRequest struct {
+	Name string
+}
+
+type SearchRoomResponse struct {
+	Rooms []RoomInfo
+}
+
 func init() {
 	http.HandleFunc("/api/room", handleAddRoom)
-	http.HandleFunc("/api/search", handleSearch)
+	http.HandleFunc("/api/room/search", handleSearchRoom)
 }
 
 func handleAddRoom(w http.ResponseWriter, r *http.Request) {
@@ -112,11 +127,78 @@ func handleAddRoom(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleSearch(w http.ResponseWriter, r *http.Request) {
+func handleSearchRoom(w http.ResponseWriter, r *http.Request) {
 	c := appengine.NewContext(r)
 	if r.Method != "POST" {
 		http.Error(w, "", http.StatusMethodNotAllowed)
 		return
 	}
-	log.Infof(c, "Hello!")
+	buf, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		log.Errorf(c, "Failed to ReadAll: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	req := new(SearchRoomRequest)
+	err = json.Unmarshal(buf, req)
+	if err != nil {
+		log.Errorf(c, "Failed to unmarshal: %v", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	q := fmt.Sprintf("Name: %s", req.Name)
+	idx, err := search.Open(roomName)
+	if err != nil {
+		log.Errorf(c, "Failed to open search index: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	so := search.SearchOptions{
+		IDsOnly: true,
+	}
+	itr := idx.Search(c, q, &so)
+	log.Infof(c, "Search count: %d", itr.Count())
+	var res SearchRoomResponse
+	for {
+		id, err := itr.Next(nil)
+		if err == search.Done {
+			break
+		}
+		if err != nil {
+			log.Errorf(c, "Failed to iterate search result: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		rk, err := datastore.DecodeKey(id)
+		if err != nil {
+			log.Errorf(c, "Failed to iterate search result: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		var sr StoreRoom
+		err = datastore.Get(c, rk, &sr)
+		if err != nil {
+			log.Errorf(c, "Failed to get room: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		ri := RoomInfo{
+			Name: sr.Name,
+		}
+		res.Rooms = append(res.Rooms, ri)
+	}
+	// send response
+	outBuf, err := json.Marshal(res)
+	if err != nil {
+		log.Errorf(c, "Failed to marshal response: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_, err = w.Write(outBuf)
+	if err != nil {
+		log.Errorf(c, "Failed to write output: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
