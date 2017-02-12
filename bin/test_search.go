@@ -127,6 +127,10 @@ func main() {
 		Name: "aardvark",
 	}
 	sres, err := searchRoom(sreq, base)
+	if err != nil {
+		log.Fatalf("Failed to search room: %v", err)
+		return
+	}
 	log.Printf("Got %d search match.", len(sres.Rooms))
 	for _, r := range sres.Rooms {
 		log.Printf("%s", r.Name)
