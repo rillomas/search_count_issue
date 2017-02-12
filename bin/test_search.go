@@ -68,6 +68,38 @@ func addRoom(req AddRoomRequest) (*AddRoomResponse, error) {
 	return &ares, nil
 }
 
+func searchRoom(req SearchRoomRequest) (*SearchRoomResponse, error) {
+	searchURL := "http://localhost:8080/api/room/search"
+	bodyType := "application/json"
+	buf, err := json.Marshal(&req)
+	if err != nil {
+		logger.Printf("json marshal failed: %v", err)
+		return nil, err
+	}
+	res, err := http.Post(searchURL, bodyType, bytes.NewReader(buf))
+	if err != nil {
+		logger.Printf("http post failed: %v", err)
+		return nil, err
+	}
+	if res.StatusCode != http.StatusOK {
+		logger.Printf("Got an unexpected response: %v", res.StatusCode)
+		return nil, err
+	}
+	buf, err = ioutil.ReadAll(res.Body)
+	if err != nil {
+		logger.Printf("Failed to read response: %v", err)
+		return nil, err
+	}
+	var sres SearchRoomResponse
+	err = json.Unmarshal(buf, &sres)
+	if err != nil {
+		logger.Printf("json unmarshal failed: %v", err)
+		return nil, err
+	}
+	return &sres, nil
+
+}
+
 func main() {
 	req := AddRoomRequest{
 		Name: "aardvark",
@@ -78,4 +110,12 @@ func main() {
 		return
 	}
 	logger.Printf("Added room: %s", res.RoomID)
+	sreq := SearchRoomRequest{
+		Name: "aardvark",
+	}
+	sres, err := searchRoom(sreq)
+	logger.Printf("Got %d search match.", len(sres.Rooms))
+	for _, r := range sres.Rooms {
+		logger.Printf("%s", r.Name)
+	}
 }
